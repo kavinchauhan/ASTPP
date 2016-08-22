@@ -54,7 +54,6 @@ config = load_conf()
 dofile(script_path.."scripts/astpp.xml.lua");
 
 
---local test = string.gsub(debug.getinfo(1).short_src, "^(.+\\)[^\\]+$", "%1");
 Logger.notice ("SECTION ")
 
 if (not params) then
@@ -84,13 +83,19 @@ end
 session:setAutoHangup(false);
 
 if(config['calling_cards_welcome_file'] ~= "") then
-	session:streamFile(sound_path.."astpp-welcome.wav");          
+        session:streamFile(sound_path..config['calling_cards_welcome_file']);
+else
+        session:streamFile(sound_path.."astpp-welcome.wav");          
 end
 
 userinfo = auth_callingcard();
 
---say_balance(userinfo)
+if (session:ready() ~= true) then
+	return
+end
 
+--Say balance
+say_balance(userinfo)
 
 --Process for dialing destination number
 process_destination(userinfo);

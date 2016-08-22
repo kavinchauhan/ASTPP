@@ -29,7 +29,7 @@ function auth_callingcard()
 	    local pin=""
 	    local carddata
 	    local aniinfo
-	if(config['cc_ani_auth'] == "1")  then 
+	if(config['cc_ani_auth'] == "0")  then 
 		local ani_number = session:getVariable("caller_id_number")
 		Logger.debug("[Dialplan] Callerid authentication:" .. ani_number)
 
@@ -163,38 +163,59 @@ end
 function validate_card_usage(carddata) 
 
     -- Check a few things before saying the card is ok.
-
-    -- Now the card is in use and nobody else can use it.
-    if ( carddata['first_used'] == "0000-00-00 00:00:00") then
-        -- If "firstused" has not been set, we will set it now.
-           local query = "UPDATE accounts SET first_used = 'now()' WHERE id = " .. carddata['id'];
-            dbh:query(query);
-        if ( tonumber(carddata['validfordays']) > 0 ) then
-            -- Check if the card is set to expire and deal with that as appropriate.            
-            local query = "UPDATE accounts SET expiry = DATE_ADD('$now', INTERVAL " .. carddata['validfordays'].." day) WHERE id = "..carddata['id']
-	        dbh:query(query);
-            return 0;
-        end
-    
-    elseif ( tonumber(carddata['validfordays']) > 0 ) then
+    if ( session:ready() ) then
         
-      	--carddata['expiry'] = $gbl_astpp_db->selectall_arrayref("SELECT DATE_FORMAT('$arg{carddata}->{expiry}' , '\%Y\%m\%d\%H\%i\%s')")->[0][0];
-        --$now = $gbl_astpp_db->selectall_arrayref("SELECT DATE_FORMAT('$now' , '\%Y\%m\%d\%H\%i\%s')")->[0][0];
-        --if($now >= $arg{carddata}->{expiry}) then
-        --    local query = "UPDATE accounts SET status = 1 WHERE id = " .. carddata['id'];
-    	--    &remove_ani($arg{carddata});
-        --    return 1;
-        --end
-     
-	elseif ( tonumber(carddata['validfordays']) < 0) then
-       		 return 1;
-   	 end
+        local callstart = os.date("!%Y-%m-%d %H:%M:%S")
+    
+        -- Now the card is in use and nobody else can use it.
+        if ( carddata['first_used'] == "0000-00-00 00:00:00") then
+
+            -- If "firstused" has not been set, we will set it now.
+               local query = "UPDATE accounts SET first_used = now() WHERE id = " .. carddata['id'];
+               Logger.debug("[Functions] [validate_card_usage] Query :" .. query)  
+               dbh:query(query);
+
+            if ( tonumber(carddata['validfordays']) > 0 ) then
+                -- Check if the card is set to expire and deal with that as appropriate.            
+                local query = "UPDATE accounts SET expiry = DATE_ADD('"..callstart.."', INTERVAL " .. carddata['validfordays'].." day) WHERE id = "..carddata['id']
+	            dbh:query(query);
+                return 0;
+            end
+    
+        elseif ( tonumber(carddata['validfordays']) > 0 ) then
+        
+                local query = "SELECT DATE_FORMAT('"..carddata['expiry'].."' , '\%Y\%m\%d\%H\%i\%s') AS expiry"  
+                assert (dbh:query(query, function(u)
+                	expiry = u
+                end))
+
+                local query = "SELECT DATE_FORMAT('"..callstart.."' , '\%Y\%m\%d\%H\%i\%s') AS expiry"
+                assert (dbh:query(query, function(u)
+                	now = u
+                end))
+                
+                if(tonumber(now['expiry']) >= tonumber(expiry['expiry'])) then
+
+                    local query = "DELETE FROM ani_map WHERE accountid = ".. carddata['id'];                    
+	                dbh:query(query);
+                    return 1
+                end    
+            
+        elseif ( tonumber(carddata['validfordays']) < 0) then
+           		 return 1;
+   	    end
+    end
 end	
+	
 
 --Calculate balance 
 function get_balance(cardinfo)
-	local balance = ((cardinfo['credit_limit'] * cardinfo['posttoexternal']) + cardinfo['balance'])
-	return balance
+    if ( session:ready() ) then
+	    local balance = ((cardinfo['credit_limit'] * cardinfo['posttoexternal']) + cardinfo['balance'])
+    	return balance
+    else
+        return '0';
+    end
 end
 
 --IVR playback and option selection
@@ -212,8 +233,6 @@ function playback_ivr(userinfo)
 	    		userinfo = get_account(userinfo['id']);     
 				process_destination(userinfo);  
     	     elseif (tonumber(result) == 2) then
-
-				config['calling_cards_balance_announce'] = 1;
 				say_balance(userinfo,config); 
 				retries = retries - 1   
 		     elseif (tonumber(result) == 3) then
@@ -229,9 +248,9 @@ function say_balance(cardinfo)
     if ( balance > 0 ) then
        		local balance_value = balance
 
-		if (tonumber(config['calling_cards_balance_announce']) == 1) then
+		if (tonumber(config['calling_cards_balance_announce']) == tonumber('0')) then
 
-		        local first, last = string.match(tostring(balance_value/1), "([^.]+)%.(.+)")
+		    local first, last = string.match(tostring(balance_value/1), "([^.]+)%.(.+)")
 
 		    session:streamFile( "astpp-this-card-has-a-balance-of.wav" )
 		    if ( first == 1 ) then
@@ -264,9 +283,9 @@ end
 --Say how much the call will cost.
 function say_cost(numberinfo)    
 
-    if ( tonumber(config['calling_cards_rate_announce']) == 2 ) then
+    if ( tonumber(config['calling_cards_rate_announce']) == tonumber('0') ) then
         
-        if ( numberinfo['cost'] > "0" ) then
+        if ( tonumber(numberinfo['cost']) > 0 ) then
             --local number, decimal = string.match(tostring(numberinfo['cost']/1), "([^.]+)%.(.+)")
             local number, decimal=tostring(numberinfo['cost']):match"([^.]*).(.*)"
             Logger.debug("[Functions] [SAY_COST] COST "..tonumber(minutes));    
@@ -323,7 +342,7 @@ function say_timelimit(minutes)
 	
 	   Logger.debug("[Functions] [SAY_TIMELIMIT] MINUTES "..tonumber(minutes));    
 	    
-	    if ( tonumber(minutes) > 0 and tonumber(config['calling_cards_timelimit_announce']) == 0 ) then
+	    if ( tonumber(minutes) > 0 and tonumber(config['calling_cards_timelimit_announce']) == tonumber('0') ) then
 		session:streamFile( "astpp-this-call-will-last.wav" );
 		if ( minutes == 1 ) then
 		    session:execute(  "say", "en number pronounced " .. minutes );
@@ -346,7 +365,7 @@ end
 -- To termination call to destination. Have all termination calculation inside this function.
 function dialout( original_destination_number, destination_number, maxlength, userinfo, user_rates , origination_dp_string ,number_loop_str)
 	if ( session:ready() ) then
-		termination_rates = get_termination_rates (destination_number,number_loop_str,userinfo['pricelist_id'],user_rates['trunk_id'],user_rates['routing_type'])
+		termination_rates = get_carrier_rates (destination_number,number_loop_str,userinfo['pricelist_id'],user_rates['trunk_id'],user_rates['routing_type'])
 		if (termination_rates ~= nil) then
 		    local i = 1
 		    local termination_rates_array = {}

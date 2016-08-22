@@ -44,7 +44,17 @@ function process_cdr($data,$db,$logger,$decimal_points)
 	$dataVariable['effective_caller_id_number'] = (isset($dataVariable['effective_caller_id_number'])) ? $dataVariable['effective_caller_id_number'] : $dataCallflow['caller_profile']['caller_id_number'];
 
     //Get actual hangup cause 
-    $hangup_cause= (isset($dataVariable['error_cdr'])) ? $dataVariable['last_bridge_hangup_cause'] : (isset($dataVariable['last_bridge_hangup_cause'])?$dataVariable['last_bridge_hangup_cause']:$dataVariable['hangup_cause']);
+    if ($dataVariable['billsec'] == 0 && $dataVariable['hangup_cause'] == 'NORMAL_CLEARING')
+    {
+        $hangup_cause = isset($dataVariable['last_bridge_hangup_cause'])?$dataVariable['last_bridge_hangup_cause']:$dataVariable['hangup_cause'];
+    }else{
+        $hangup_cause = $dataVariable['hangup_cause'];
+    }   
+
+    if ($dataVariable['error_cdr'] == '1')
+    {
+        $hangup_cause= (isset($dataVariable['error_cdr'])) ? $dataVariable['last_bridge_hangup_cause'] : (isset($dataVariable['last_bridge_hangup_cause'])?$dataVariable['last_bridge_hangup_cause']:$dataVariable['hangup_cause']); 
+    }
 
 	/*#### PATCH FOR ONE WAY AUDIO ####*/
 	if ($hangup_cause == "NORMAL_UNSPECIFIED" && $dataVariable['billsec'] > 0)
