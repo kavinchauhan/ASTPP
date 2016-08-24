@@ -233,7 +233,7 @@ Email test
 
     function send_email($template_type,$details,$detail_type='',$attachment='',$resend=0,$mass_mail=0,$brodcast=0) {
 	$this->get_email_settings();
-	if($this->email){
+	if(!$this->email){
 		if(!$resend){
 			$this->build_template($template_type,$details,$detail_type);
 		}else{
