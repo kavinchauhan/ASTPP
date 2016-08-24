@@ -245,7 +245,7 @@ Email test
 		else	
 			$history_id=$details['history_id'];
 		if(isset($this->from) && $this->from!='' && isset($this->to) && $this->to!='' && !$mass_mail){
-			if($this->smtp){
+			if(!$this->smtp){
 				$this->get_smtp_details();
 			}			
 			$this->CI->email->from($this->from, $this->company_name);
